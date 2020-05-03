@@ -1,3 +1,4 @@
+import cv2
 # develop a classifier for the 5 Celebrity Faces Dataset
 from random import choice
 from numpy import load
@@ -16,6 +17,9 @@ from PIL import Image
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
 from tensorflow.keras import backend as K
+
+# from tensorflow.python.client import device_lib 
+# print(device_lib.list_local_devices())
 
 K.clear_session()
 config = ConfigProto()
@@ -43,6 +47,7 @@ def load_dataset(directory):
 		X.extend(faces)
 		y.extend(labels)
 	return asarray(X), asarray(y)
+
 # extract a single face from a given photograph
 def extract_face(filename, required_size=(160, 160)):
 	# load image from file
@@ -68,6 +73,43 @@ def extract_face(filename, required_size=(160, 160)):
 	face_array = asarray(image)
 	return face_array
 
+def load_dataset_from_frame(frame):
+	X = list()
+	# enumerate folders, on per class	
+	# load all faces in the subdirectory
+	faces = extract_face_from_frame(frame)	
+	if not(faces is None) and faces.any():
+		X.extend(faces)	
+	# store
+	
+	return asarray(X)
+
+def extract_face_from_frame(frame, required_size=(160, 160)):
+	# load image from file
+	image = Image.fromarray(frame)
+	# convert to RGB, if needed
+	image = image.convert('RGB')
+	# convert to array
+	pixels = asarray(image)
+	# create the detector, using default weights
+	detector = MTCNN()
+	# detect faces in the image
+	results = detector.detect_faces(pixels)
+	# extract the bounding box from the first face
+	if results.__len__() == 0:
+		return
+	x1, y1, width, height = results[0]['box']
+	# bug fix
+	x1, y1 = abs(x1), abs(y1)
+	x2, y2 = x1 + width, y1 + height
+	# extract the face
+	face = pixels[y1:y2, x1:x2]
+	# resize pixels to the model size
+	image = Image.fromarray(face)
+	image = image.resize(required_size)
+	face_array = asarray(image)
+	return face_array
+
 # load images and extract faces for all images in a directory
 def load_faces(directory):
 	faces = list()
@@ -80,6 +122,7 @@ def load_faces(directory):
 		# store
 		faces.append(face)
 	return faces
+
 # get the face embedding for one face
 def get_embedding(model, face_pixels):
 	# scale pixel values
@@ -94,57 +137,62 @@ def get_embedding(model, face_pixels):
 	return yhat[0]
 
 
-# data = load('5-celebrity-faces-dataset.npz')
-testX_faces, testy_faces = load_dataset('5-celebrity-faces-dataset/recognize/')
-# testX_faces = data['arr_2']
-
 # load the facenet model
 model = load_model('facenet_keras.h5')
 print('Loaded Model')
-# get embedding to the regognizing face
-newRecognizeX = list()
-for face_pixels in testX_faces:
-	embedding = get_embedding(model, face_pixels)
-	newRecognizeX.append(embedding)
-newRecognizeX = asarray(newRecognizeX)
-
 # load face embeddings
 data = load('5-celebrity-faces-embeddings.npz')
 trainX, trainy, testX, testy = data['arr_0'], data['arr_1'], data['arr_2'], data['arr_3']
 # normalize input vectors
 in_encoder = Normalizer(norm='l2')
-trainX = in_encoder.transform(trainX)
-testX = in_encoder.transform(testX)
 # label encode targets
 out_encoder = LabelEncoder()
 out_encoder.fit(trainy)
-trainy = out_encoder.transform(trainy)
+trainy2 = out_encoder.transform(trainy)
 testy = out_encoder.transform(testy)
-# fit model
-model = SVC(kernel='linear', probability=True)
-model.fit(trainX, trainy)
-# test model on a random example from the test dataset
-selection = 0 
-# choice([i for i in range(testX.shape[0])])
-random_face_pixels = testX_faces[selection]
-#random_face_emb = testX[selection]
-random_face_emb = newRecognizeX[selection]
-#random_face_class = testy[selection]
-#random_face_name = out_encoder.inverse_transform([random_face_class])
-# prediction for the face
-samples = expand_dims(random_face_emb, axis=0)
-yhat_class = model.predict(samples)
-yhat_prob = model.predict_proba(samples)
-# get name
-class_index = yhat_class[0]
-class_probability = yhat_prob[0,class_index] * 100
-predict_names = out_encoder.inverse_transform(yhat_class)
-print('Predicted: %s (%.3f)' % (predict_names[0], class_probability))
-#print('Expected: %s' % random_face_name[0])
-# plot for fun
-pyplot.imshow(random_face_pixels)
-title = '%s (%.3f)' % (predict_names[0], class_probability)
-pyplot.title(title)
-pyplot.show()
+testX_faces = ''
+video_capture = cv2.VideoCapture(0)
+while True:
+	# Capture frame-by-frame
+	ret, frame = video_capture.read()
+	# Display the resulting frame
+	testX_faces = load_dataset_from_frame(frame)
+	cv2.imshow('Video', frame)
+	if cv2.waitKey(1) & 0xFF == ord('q'):
+		break
+	if testX_faces.any():
+		# get embedding to the regognizing face
+		newRecognizeX = list()
+		embedding = get_embedding(model, testX_faces)
+		newRecognizeX.append(embedding)
+		newRecognizeX = asarray(newRecognizeX)
 
+		trainX = in_encoder.transform(trainX)
+		testX = in_encoder.transform(testX)
+		
+		# fit model
+		model2 = SVC(kernel='linear', probability=True)
+		model2.fit(trainX, trainy2)
+
+		# recognize person
+		selection = 0 
+		random_face_pixels = testX_faces
+		random_face_emb = newRecognizeX[selection]
+
+		# prediction for the face
+		samples = expand_dims(random_face_emb, axis=0)
+		yhat_class = model2.predict(samples)
+		yhat_prob = model2.predict_proba(samples)
+		# get name
+		class_index = yhat_class[0]
+		class_probability = yhat_prob[0,class_index] * 100
+		predict_names = out_encoder.inverse_transform(yhat_class)
+		print('Predicted: %s (%.3f)' % (predict_names[0], class_probability))
+		# plot face
+		pyplot.imshow(random_face_pixels)
+		title = '%s (%.3f)' % (predict_names[0], class_probability)
+		pyplot.title(title)
+		pyplot.show()
+video_capture.release()
+cv2.destroyAllWindows()
 model = None
