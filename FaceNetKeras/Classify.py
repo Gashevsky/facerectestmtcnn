@@ -141,7 +141,7 @@ def get_embedding(model, face_pixels):
 model = load_model('facenet_keras.h5')
 print('Loaded Model')
 # load face embeddings
-data = load('5-celebrity-faces-embeddings.npz')
+data = load('faces-embeddings.npz')
 trainX, trainy, testX, testy = data['arr_0'], data['arr_1'], data['arr_2'], data['arr_3']
 # normalize input vectors
 in_encoder = Normalizer(norm='l2')
