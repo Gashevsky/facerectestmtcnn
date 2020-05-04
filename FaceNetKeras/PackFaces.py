@@ -15,9 +15,9 @@ config = ConfigProto()
 config.gpu_options.allow_growth = True
 
 session = InteractiveSession(config=config)
-
+tensorflow.compat.v1.disable_eager_execution()
 # extract a single face from a given photograph
-def extract_face(filename, required_size=(160, 160)):
+def extract_face(filename, detector, required_size=(160, 160)):
 	# load image from file
 	print('extracting face from: %s' % (filename))
 	try:
@@ -25,9 +25,7 @@ def extract_face(filename, required_size=(160, 160)):
 		# convert to RGB, if needed
 		image = image.convert('RGB')
 		# convert to array
-		pixels = asarray(image)
-		# create the detector, using default weights
-		detector = MTCNN()
+		pixels = asarray(image)		
 		# detect faces in the image
 		results = detector.detect_faces(pixels)
 		# extract the bounding box from the first face
@@ -49,12 +47,14 @@ def extract_face(filename, required_size=(160, 160)):
 # load images and extract faces for all images in a directory
 def load_faces(directory):
 	faces = list()
-	# enumerate files
+	# create the detector, using default weights
+	detector = MTCNN()
+	# enumerate files	
 	for filename in list(listdir(directory)):
 		# path
-		path = directory + filename
+		path = directory + filename	
 		# get face
-		face = extract_face(path)
+		face = extract_face(path, detector)
 		# store
 		if (face is not None):
 			faces.append(face)
@@ -81,6 +81,7 @@ def load_dataset(directory):
 	importdirs = list(listdir(directory))
 	# enumerate folders, on per class
 	with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+	#with concurrent.futures.ProcessPoolExecutor(max_workers=1) as executor:
 		future_to_data = {executor.submit(load_directory, directory, subdir): subdir for subdir in importdirs}
 		for future in concurrent.futures.as_completed(future_to_data):
 			subdir = future_to_data[future]

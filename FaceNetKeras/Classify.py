@@ -17,6 +17,7 @@ from PIL import Image
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
 from tensorflow.keras import backend as K
+from tensorflow.compat.v1 import disable_eager_execution
 
 # from tensorflow.python.client import device_lib 
 # print(device_lib.list_local_devices())
@@ -25,7 +26,7 @@ K.clear_session()
 config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
-
+disable_eager_execution()
 # load faces
 # load a dataset that contains one subdir for each class that in turn contains images
 def load_dataset(directory):
