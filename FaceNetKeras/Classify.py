@@ -1,4 +1,6 @@
 import cv2
+import os
+import threading
 # develop a classifier for the 5 Celebrity Faces Dataset
 from random import choice
 from numpy import load
@@ -27,6 +29,28 @@ config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
 disable_eager_execution()
+
+class OutFrame:
+    sharedFrame = None
+
+# get the video and resize frame
+def get_video(outFrame, lock, captureURL , captureMethod = cv2.CAP_FFMPEG):
+	video_capture = cv2.VideoCapture(captureURL, captureMethod)
+	video_capture.set(cv2.CAP_PROP_BUFFERSIZE, 3)
+	while True:
+		# Capture frame-by-frame
+		ret, frame = video_capture.read()	
+		#budsize = cv2.get(cv2.CAP_PROP_BUFFERSIZE)
+		# Display the resulting frame
+		if ret:
+			scale_percent = 25 # percent of original size
+			width = int(frame.shape[1] * scale_percent / 100) 
+			height = int(frame.shape[0] * scale_percent / 100) 
+			dim = (width, height) 
+			frameToShare = cv2.resize(frame, dim, interpolation = cv2.INTER_AREA) 
+			with lock:
+				outFrame.sharedFrame = frameToShare
+
 # load faces
 # load a dataset that contains one subdir for each class that in turn contains images
 def load_dataset(directory):
@@ -152,48 +176,60 @@ out_encoder.fit(trainy)
 trainy2 = out_encoder.transform(trainy)
 testy = out_encoder.transform(testy)
 testX_faces = ''
-video_capture = cv2.VideoCapture(0)
+#video_capture = cv2.VideoCapture(0)
+#os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
+#video_capture = cv2.VideoCapture("rtsp://admin:password@192.168.1.14:554",cv2.CAP_FFMPEG)
+lock = threading.RLock()
+sharedFrame = OutFrame()
+frame = None
+videograbThread = threading.Thread(target=get_video, args=(sharedFrame, lock,"rtsp://admin:Pass@192.168.1.14:554", cv2.CAP_FFMPEG), daemon=True)
+videograbThread.start()
 while True:
-	# Capture frame-by-frame
-	ret, frame = video_capture.read()
-	# Display the resulting frame
-	testX_faces = load_dataset_from_frame(frame)
-	cv2.imshow('Video', frame)
 	if cv2.waitKey(1) & 0xFF == ord('q'):
-		break
-	if testX_faces.any():
-		# get embedding to the regognizing face
-		newRecognizeX = list()
-		embedding = get_embedding(model, testX_faces)
-		newRecognizeX.append(embedding)
-		newRecognizeX = asarray(newRecognizeX)
+			#video_capture.release()
+			break	
+	# Capture frame within lock
+	with lock:
+		frame = sharedFrame.sharedFrame 
 
-		trainX = in_encoder.transform(trainX)
-		testX = in_encoder.transform(testX)
+	if not(frame is None):
+		# Display the resulting frame
+		testX_faces = load_dataset_from_frame(frame)
+		cv2.imshow('Video', frame)
+		if cv2.waitKey(1) & 0xFF == ord('q'):
+			break
+		if testX_faces.any():
+			# get embedding to the regognizing face
+			newRecognizeX = list()
+			embedding = get_embedding(model, testX_faces)
+			newRecognizeX.append(embedding)
+			newRecognizeX = asarray(newRecognizeX)
+
+			trainX = in_encoder.transform(trainX)
+			testX = in_encoder.transform(testX)
 		
-		# fit model
-		model2 = SVC(kernel='linear', probability=True)
-		model2.fit(trainX, trainy2)
+			# fit model
+			model2 = SVC(kernel='linear', probability=True)
+			model2.fit(trainX, trainy2)
+			# recognize person
+			selection = 0 
+			random_face_pixels = testX_faces
+			random_face_emb = newRecognizeX[selection]
 
-		# recognize person
-		selection = 0 
-		random_face_pixels = testX_faces
-		random_face_emb = newRecognizeX[selection]
-
-		# prediction for the face
-		samples = expand_dims(random_face_emb, axis=0)
-		yhat_class = model2.predict(samples)
-		yhat_prob = model2.predict_proba(samples)
-		# get name
-		class_index = yhat_class[0]
-		class_probability = yhat_prob[0,class_index] * 100
-		predict_names = out_encoder.inverse_transform(yhat_class)
-		print('Predicted: %s (%.3f)' % (predict_names[0], class_probability))
-		# plot face
-		pyplot.imshow(random_face_pixels)
-		title = '%s (%.3f)' % (predict_names[0], class_probability)
-		pyplot.title(title)
-		pyplot.show()
-video_capture.release()
+			# prediction for the face
+			samples = expand_dims(random_face_emb, axis=0)
+			yhat_class = model2.predict(samples)
+			yhat_prob = model2.predict_proba(samples)
+			# get name
+			class_index = yhat_class[0]
+			class_probability = yhat_prob[0,class_index] * 100
+			predict_names = out_encoder.inverse_transform(yhat_class)
+			print('Predicted: %s (%.3f)' % (predict_names[0], class_probability))
+			# plot face
+			pyplot.imshow(random_face_pixels)
+			title = '%s (%.3f)' % (predict_names[0], class_probability)
+			pyplot.title(title)
+			pyplot.show()
+#video_capture.release()
 cv2.destroyAllWindows()
 model = None
