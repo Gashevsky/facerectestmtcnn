@@ -1,7 +1,6 @@
 import cv2
 import os
 import threading
-# develop a classifier for the 5 Celebrity Faces Dataset
 from random import choice
 from numpy import load
 from numpy import expand_dims
@@ -43,60 +42,13 @@ def get_video(outFrame, lock, captureURL , captureMethod = cv2.CAP_FFMPEG):
 		#budsize = cv2.get(cv2.CAP_PROP_BUFFERSIZE)
 		# Display the resulting frame
 		if ret:
-			scale_percent = 25 # percent of original size
+			scale_percent = 50 # percent of original size
 			width = int(frame.shape[1] * scale_percent / 100) 
 			height = int(frame.shape[0] * scale_percent / 100) 
 			dim = (width, height) 
 			frameToShare = cv2.resize(frame, dim, interpolation = cv2.INTER_AREA) 
 			with lock:
 				outFrame.sharedFrame = frameToShare
-
-# load faces
-# load a dataset that contains one subdir for each class that in turn contains images
-def load_dataset(directory):
-	X, y = list(), list()
-	# enumerate folders, on per class
-	for subdir in listdir(directory):
-		# path
-		path = directory + subdir + '/'
-		# skip any files that might be in the dir
-		if not isdir(path):
-			continue
-		# load all faces in the subdirectory
-		faces = load_faces(path)
-		# create labels
-		labels = [subdir for _ in range(len(faces))]
-		# summarize progress
-		print('>loaded %d examples for class: %s' % (len(faces), subdir))
-		# store
-		X.extend(faces)
-		y.extend(labels)
-	return asarray(X), asarray(y)
-
-# extract a single face from a given photograph
-def extract_face(filename, required_size=(160, 160)):
-	# load image from file
-	image = Image.open(filename)
-	# convert to RGB, if needed
-	image = image.convert('RGB')
-	# convert to array
-	pixels = asarray(image)
-	# create the detector, using default weights
-	detector = MTCNN()
-	# detect faces in the image
-	results = detector.detect_faces(pixels)
-	# extract the bounding box from the first face
-	x1, y1, width, height = results[0]['box']
-	# bug fix
-	x1, y1 = abs(x1), abs(y1)
-	x2, y2 = x1 + width, y1 + height
-	# extract the face
-	face = pixels[y1:y2, x1:x2]
-	# resize pixels to the model size
-	image = Image.fromarray(face)
-	image = image.resize(required_size)
-	face_array = asarray(image)
-	return face_array
 
 def load_dataset_from_frame(frame, detector):
 	X = list()
@@ -105,15 +57,14 @@ def load_dataset_from_frame(frame, detector):
 	faces = extract_face_from_frame(frame, detector)	
 	if not(faces is None) and faces.any():
 		X.extend(faces)	
-	# store
-	
+	# store	
 	return asarray(X)
 
 def extract_face_from_frame(frame, detector, required_size=(160, 160)):
 	# load image from file
 	image = Image.fromarray(frame)
 	# convert to RGB, if needed
-	image = image.convert('RGB')
+	#image = image.convert('RGB')
 	# convert to array
 	pixels = asarray(image)	
 	# detect faces in the image
@@ -122,29 +73,36 @@ def extract_face_from_frame(frame, detector, required_size=(160, 160)):
 	if results.__len__() == 0:
 		return
 	x1, y1, width, height = results[0]['box']
-	# bug fix
+	# we do not recognize wery small picture
+	if height < 160 or width < 160:
+		return 
 	x1, y1 = abs(x1), abs(y1)
+	xCorrection = int(0)
+	yCorrection = int(0)
+	(frameHeight, frameWidth, frameDepth) = frame.shape
+	if width > height:
+		yCorrection = (width - height) // 2
+		height = width
+		if (y1 - yCorrection < 0) or (y1 + yCorrection > frameHeight):
+			return # the face is too close to the border
+		y1 = y1 - yCorrection
+
+	if width < height:
+		xCorrection = (height - width) // 2
+		height = width
+		if (x1 - xCorrection < 0) or (x1 + xCorrection > frameWidth):
+			return # the face is too close to the border
+		x1 = x1 - xCorrection
+		
 	x2, y2 = x1 + width, y1 + height
 	# extract the face
 	face = pixels[y1:y2, x1:x2]
 	# resize pixels to the model size
 	image = Image.fromarray(face)
+	
 	image = image.resize(required_size)
 	face_array = asarray(image)
 	return face_array
-
-# load images and extract faces for all images in a directory
-def load_faces(directory):
-	faces = list()
-	# enumerate files
-	for filename in listdir(directory):
-		# path
-		path = directory + filename
-		# get face
-		face = extract_face(path)
-		# store
-		faces.append(face)
-	return faces
 
 # get the face embedding for one face
 def get_embedding(model, face_pixels):
