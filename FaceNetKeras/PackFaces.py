@@ -100,9 +100,9 @@ def load_dataset(directory):
 	return asarray(X), asarray(Y)
 
 # load train dataset
-trainX, trainy = load_dataset('faces-dataset/train/')
+trainX, trainy = load_dataset('faces-dataset/')
 print(trainX.shape, trainy.shape)
 # load test dataset
-testX, testy = load_dataset('faces-dataset/val/')
+#testX, testy = load_dataset('faces-dataset/val/')
 # save arrays to one file in compressed format
-savez_compressed('faces-dataset.npz', trainX, trainy, testX, testy)
+savez_compressed('faces-dataset.npz', trainX, trainy)

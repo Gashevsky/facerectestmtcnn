@@ -125,14 +125,13 @@ model = load_model('facenet_keras.h5')
 print('Loaded Model')
 # load face embeddings
 data = load('faces-embeddings.npz')
-trainX, trainy, testX, testy = data['arr_0'], data['arr_1'], data['arr_2'], data['arr_3']
+trainX, trainy = data['arr_0'], data['arr_1']
 # normalize input vectors
 in_encoder = Normalizer(norm='l2')
 # label encode targets
 out_encoder = LabelEncoder()
 out_encoder.fit(trainy)
 trainy2 = out_encoder.transform(trainy)
-testy = out_encoder.transform(testy)
 testX_faces = ''
 #video_capture = cv2.VideoCapture(0)
 #os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
@@ -143,7 +142,6 @@ frame = None
 #load model
 model2 = SVC(kernel='linear', probability=True)
 trainX = in_encoder.transform(trainX)
-testX = in_encoder.transform(testX)
 # fit model			
 model2.fit(trainX, trainy2)
 
@@ -182,11 +180,11 @@ while True:
 			class_index = yhat_class[0]
 			class_probability = yhat_prob[0,class_index] * 100
 			predict_names = out_encoder.inverse_transform(yhat_class)
-			print('Predicted: %s (%.3f)' % (predict_names[0], class_probability))
-			if (class_probability > 99.9999):
+			print('Predicted: %s (%.6f)' % (predict_names[0], class_probability))
+			if (class_probability > 99.99999):
 				# plot face
 				pyplot.imshow(random_face_pixels)
-				title = '%s (%.3f)' % (predict_names[0], class_probability)
+				title = '%s (%.6f)' % (predict_names[0], class_probability)
 				pyplot.title(title)
 				pyplot.show()
 #video_capture.release()
