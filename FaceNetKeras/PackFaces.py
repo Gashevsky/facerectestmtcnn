@@ -1,4 +1,4 @@
-# face detection for the 5 Celebrity Faces Dataset https://machinelearningmastery.com/how-to-develop-a-face-recognition-system-using-facenet-in-keras-and-an-svm-classifier/
+# inspired by https://machinelearningmastery.com/how-to-develop-a-face-recognition-system-using-facenet-in-keras-and-an-svm-classifier/
 import tensorflow.keras
 import concurrent.futures
 from os import listdir
@@ -8,6 +8,11 @@ from matplotlib import pyplot
 from numpy import savez_compressed
 from numpy import asarray
 from mtcnn.mtcnn import MTCNN
+from sklearn.svm import SVC
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import Normalizer
+from numpy import load
+from sklearn.externals import joblib
 
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
@@ -106,3 +111,16 @@ print(trainX.shape, trainy.shape)
 #testX, testy = load_dataset('faces-dataset/val/')
 # save arrays to one file in compressed format
 savez_compressed('faces-dataset.npz', trainX, trainy)
+
+inp_normalizer = Normalizer(norm='l2')
+label_encoder = LabelEncoder()
+label_encoder.fit(trainy)
+model2 = SVC(kernel='linear', probability=True)
+trainX = inp_normalizer.transform(trainX)
+trainy2 = label_encoder.transform(trainy)
+# fit model			
+model2.fit(trainX, trainy2)
+
+svc_model_filename = "pickle_svc_model.joblib"
+model_encoder = (model2, label_encoder)
+joblib.dump(model_encoder, svc_model_filename)

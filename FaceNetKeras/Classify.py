@@ -14,6 +14,7 @@ from numpy import asarray
 from tensorflow.keras.models import load_model
 from mtcnn.mtcnn import MTCNN
 from PIL import Image
+from sklearn.externals import joblib
 
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
@@ -123,15 +124,24 @@ detector = MTCNN()
 # load the facenet model
 model = load_model('facenet_keras.h5')
 print('Loaded Model')
-# load face embeddings
-data = load('faces-embeddings.npz')
-trainX, trainy = data['arr_0'], data['arr_1']
-# normalize input vectors
-in_encoder = Normalizer(norm='l2')
-# label encode targets
-out_encoder = LabelEncoder()
-out_encoder.fit(trainy)
-trainy2 = out_encoder.transform(trainy)
+
+# # load face embeddings
+# data = load('faces-embeddings.npz')
+# trainX, trainy = data['arr_0'], data['arr_1']
+# # normalize input vectors
+# in_encoder = Normalizer(norm='l2')
+# # label encode targets
+# out_encoder = LabelEncoder()
+# out_encoder.fit(trainy)
+# trainy2 = out_encoder.transform(trainy)
+# #load model
+# model2 = SVC(kernel='linear', probability=True)
+# trainX = in_encoder.transform(trainX)
+# # fit model			
+# model2.fit(trainX, trainy2)
+
+(model2, out_encoder) = joblib.load("pickle_svc_model.joblib")
+
 testX_faces = ''
 #video_capture = cv2.VideoCapture(0)
 #os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
@@ -139,13 +149,8 @@ testX_faces = ''
 lock = threading.RLock()
 sharedFrame = OutFrame()
 frame = None
-#load model
-model2 = SVC(kernel='linear', probability=True)
-trainX = in_encoder.transform(trainX)
-# fit model			
-model2.fit(trainX, trainy2)
 
-videograbThread = threading.Thread(target=get_video, args=(sharedFrame, lock,"rtsp://admin:Pass@192.168.1.14:554", cv2.CAP_FFMPEG), daemon=True)
+videograbThread = threading.Thread(target=get_video, args=(sharedFrame, lock,"rtsp://admin:Pass@192.168.1.15:554", cv2.CAP_FFMPEG), daemon=True)
 videograbThread.start()
 while True:
 	if cv2.waitKey(1) & 0xFF == ord('q'):
