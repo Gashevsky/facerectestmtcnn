@@ -82,7 +82,7 @@ def load_directory(directory, subdir):
 
 # load a dataset that contains one subdir for each class that in turn contains images
 def load_dataset(directory):
-	X, Y = list(), list()
+	pictures, labels = list(), list()
 	importdirs = list(listdir(directory))
 	# enumerate folders, on per class
 	with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
@@ -94,33 +94,33 @@ def load_dataset(directory):
 				faces, labels = future.result()
 				print('>loaded files for subdir:', subdir) 
 				if ((faces is not None) and (labels is not None)):
-					X.extend(faces)
-					Y.extend(labels)
+					pictures.extend(faces)
+					labels.extend(labels)
 			except Exception as exc:
 				print('%r generated an exception: %s' % (subdir, exc))
 			else:
 				print('%r page is %d bytes' % (subdir, len(faces)))
 	#for subdir in importdirs:		
 		#faces, labels = load_directory(directory, subdir)		
-	return asarray(X), asarray(Y)
+	return asarray(pictures), asarray(labels)
 
 # load train dataset
-trainX, trainy = load_dataset('faces-dataset/')
-print(trainX.shape, trainy.shape)
+trainPictures, trainLabels = load_dataset('faces-dataset/')
+print(trainPictures.shape, trainLabels.shape)
 # load test dataset
 #testX, testy = load_dataset('faces-dataset/val/')
 # save arrays to one file in compressed format
-savez_compressed('faces-dataset.npz', trainX, trainy)
+savez_compressed('faces-dataset.npz', trainPictures, trainLabels)
 
 inp_normalizer = Normalizer(norm='l2')
 label_encoder = LabelEncoder()
-label_encoder.fit(trainy)
-model2 = SVC(kernel='linear', probability=True)
-trainX = inp_normalizer.transform(trainX)
-trainy2 = label_encoder.transform(trainy)
+label_encoder.fit(trainLabels)
+modelSVC = SVC(kernel='linear', probability=True)
+trainPictures = inp_normalizer.transform(trainPictures)
+transformedLabels = label_encoder.transform(trainLabels)
 # fit model			
-model2.fit(trainX, trainy2)
+modelSVC.fit(trainPictures, transformedLabels)
 
 svc_model_filename = "pickle_svc_model.joblib"
-model_encoder = (model2, label_encoder)
+model_encoder = (modelSVC, label_encoder)
 joblib.dump(model_encoder, svc_model_filename)

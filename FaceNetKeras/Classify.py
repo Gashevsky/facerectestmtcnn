@@ -52,14 +52,14 @@ def get_video(outFrame, lock, captureURL , captureMethod = cv2.CAP_FFMPEG):
 				outFrame.sharedFrame = frameToShare
 
 def load_dataset_from_frame(frame, detector):
-	X = list()
+	facesList = list()
 	# enumerate folders, on per class	
 	# load all faces in the subdirectory
 	faces = extract_face_from_frame(frame, detector)	
 	if not(faces is None) and faces.any():
-		X.extend(faces)	
+		facesList.extend(faces)	
 	# store	
-	return asarray(X)
+	return asarray(facesList)
 
 def extract_face_from_frame(frame, detector, required_size=(160, 160)):
 	# load image from file
@@ -100,7 +100,6 @@ def extract_face_from_frame(frame, detector, required_size=(160, 160)):
 	face = pixels[y1:y2, x1:x2]
 	# resize pixels to the model size
 	image = Image.fromarray(face)
-	
 	image = image.resize(required_size)
 	face_array = asarray(image)
 	return face_array
@@ -120,9 +119,9 @@ def get_embedding(model, face_pixels):
 
 
 # create the face detector, using default weights
-detector = MTCNN()
+detectorMTCNN = MTCNN()
 # load the facenet model
-model = load_model('facenet_keras.h5')
+modelFaceNetPretrained = load_model('facenet_keras.h5')
 print('Loaded Model')
 
 # # load face embeddings
@@ -140,9 +139,9 @@ print('Loaded Model')
 # # fit model			
 # model2.fit(trainX, trainy2)
 
-(model2, out_encoder) = joblib.load("pickle_svc_model.joblib")
+(modelSVC_trained, out_encoder) = joblib.load("pickle_svc_model.joblib")
 
-testX_faces = ''
+detectedFacesArray = ''
 #video_capture = cv2.VideoCapture(0)
 #os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
 #video_capture = cv2.VideoCapture("rtsp://admin:password@192.168.1.14:554",cv2.CAP_FFMPEG)
@@ -162,36 +161,36 @@ while True:
 
 	if not(frame is None):
 		# Display the resulting frame
-		testX_faces = load_dataset_from_frame(frame, detector)
+		detectedFacesArray = load_dataset_from_frame(frame, detectorMTCNN)
 		cv2.imshow('Video', frame)
 		if cv2.waitKey(1) & 0xFF == ord('q'):
 			break
-		if testX_faces.any():			
+		if detectedFacesArray.any():			
 			newRecognizeX = list()
 			# get embedding to the regognizing face
-			embedding = get_embedding(model, testX_faces)
+			embedding = get_embedding(modelFaceNetPretrained, detectedFacesArray)
 			newRecognizeX.append(embedding)
 			newRecognizeX = asarray(newRecognizeX)							
 			# recognize person
 			selection = 0 
-			random_face_pixels = testX_faces
-			random_face_emb = newRecognizeX[selection]
+			captured_face_pixels = detectedFacesArray
+			captured_face_emb = newRecognizeX[selection]
 
 			# prediction for the face
-			samples = expand_dims(random_face_emb, axis=0)		
-			yhat_class = model2.predict(samples)
-			yhat_prob = model2.predict_proba(samples)
+			samples = expand_dims(captured_face_emb, axis=0)		
+			predicted_class = modelSVC_trained.predict(samples)
+			predicted_probability = modelSVC_trained.predict_proba(samples)
 			# get name
-			class_index = yhat_class[0]
-			class_probability = yhat_prob[0,class_index] * 100
-			predict_names = out_encoder.inverse_transform(yhat_class)
+			class_index = predicted_class[0]
+			class_probability = predicted_probability[0,class_index] * 100
+			predict_names = out_encoder.inverse_transform(predicted_class)
 			print('Predicted: %s (%.6f)' % (predict_names[0], class_probability))
 			if (class_probability > 99.99999):
 				# plot face
-				pyplot.imshow(random_face_pixels)
+				pyplot.imshow(captured_face_pixels)
 				title = '%s (%.6f)' % (predict_names[0], class_probability)
 				pyplot.title(title)
 				pyplot.show()
 #video_capture.release()
 cv2.destroyAllWindows()
-model = None
+modelFaceNetPretrained = None
