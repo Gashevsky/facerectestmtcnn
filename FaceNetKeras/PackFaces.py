@@ -7,15 +7,18 @@ from PIL import Image
 from matplotlib import pyplot
 from numpy import savez_compressed
 from numpy import asarray
+from numpy import expand_dims
 from mtcnn.mtcnn import MTCNN
 from sklearn.svm import SVC
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import Normalizer
 from numpy import load
-from sklearn.externals import joblib
+import joblib
+import pyodbc 
 
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
+from tensorflow.keras.models import load_model
 config = ConfigProto()
 config.gpu_options.allow_growth = True
 
@@ -91,11 +94,11 @@ def load_dataset(directory):
 		for future in concurrent.futures.as_completed(future_to_data):
 			subdir = future_to_data[future]
 			try:
-				faces, labels = future.result()
+				faces, face_labels = future.result()
 				print('>loaded files for subdir:', subdir) 
 				if ((faces is not None) and (labels is not None)):
 					pictures.extend(faces)
-					labels.extend(labels)
+					labels.extend(face_labels)
 			except Exception as exc:
 				print('%r generated an exception: %s' % (subdir, exc))
 			else:
@@ -104,14 +107,48 @@ def load_dataset(directory):
 		#faces, labels = load_directory(directory, subdir)		
 	return asarray(pictures), asarray(labels)
 
-# load train dataset
-trainPictures, trainLabels = load_dataset('faces-dataset/')
-print(trainPictures.shape, trainLabels.shape)
-# load test dataset
-#testX, testy = load_dataset('faces-dataset/val/')
-# save arrays to one file in compressed format
-savez_compressed('faces-dataset.npz', trainPictures, trainLabels)
+def get_embedding(model, face_pixels):
+	# scale pixel values
+	face_pixels = face_pixels.astype('float32')
+	# standardize pixel values across channels (global)
+	mean, std = face_pixels.mean(), face_pixels.std()
+	face_pixels = (face_pixels - mean) / std
+	# transform face into one sample
+	samples = expand_dims(face_pixels, axis=0)
+	# make prediction to get embedding
+	yhat = model.predict(samples)
+	return yhat[0]
 
+conn = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER=DESKTestWIN10HO;DATABASE=OpenDoors;UID=Gashevskyi;PWD=Test1234')
+cursor = conn.cursor()
+
+# load test dataset
+trainPhotos, trainLabels = load_dataset('faces-dataset/')
+# save arrays to one file in compressed format
+savez_compressed('faces-dataset.npz', trainPhotos, trainLabels)
+
+#data = load('faces-dataset.npz')
+#trainPhotos, trainLabels = data['arr_0'], data['arr_1']
+print('Loaded: ', trainPhotos.shape, trainLabels.shape)
+# load the facenet model
+model = load_model('facenet_keras.h5')
+print('Loaded Model')
+# convert each face in the train set to an embedding
+trainPicturesEmbedding = list()
+for face_pixels in trainPhotos:
+	embedding = get_embedding(model, face_pixels)
+	trainPicturesEmbedding.append(embedding)
+trainPictures = asarray(trainPicturesEmbedding)
+# save arrays to one file in compressed format
+savez_compressed('faces-embeddings.npz', trainPicturesEmbedding, trainLabels)
+#data = load('faces-embeddings.npz')
+
+print(trainPicturesEmbedding)
+for trainLabel in trainLabels:
+	rows = cursor.execute("select * from Users where UserName = ?", trainLabel).fetchall()
+	if (rows is None) or len(rows) == 0:
+		cursor.execute("insert into Users (UserName) values (?)", trainLabel)
+		conn.commit()
 inp_normalizer = Normalizer(norm='l2')
 label_encoder = LabelEncoder()
 label_encoder.fit(trainLabels)

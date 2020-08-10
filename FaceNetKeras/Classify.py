@@ -1,20 +1,17 @@
+from datetime import datetime as dt
+from datetime import timedelta as tdelta
 import cv2
-import os
 import threading
-from random import choice
-from numpy import load
+import requests
+import pyodbc 
+
 from numpy import expand_dims
-from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import Normalizer
-from sklearn.svm import SVC
 from matplotlib import pyplot
-from os import listdir
-from os.path import isdir
 from numpy import asarray
 from tensorflow.keras.models import load_model
 from mtcnn.mtcnn import MTCNN
 from PIL import Image
-from sklearn.externals import joblib
+import joblib
 
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
@@ -117,6 +114,12 @@ def get_embedding(model, face_pixels):
 	yhat = model.predict(samples)
 	return yhat[0]
 
+# send command to ESP relay controller
+def openDoor():	
+	urlGet = 'https://192.168.1.84/command/open'
+	myobj = "{\"pass\":\"P_Test\"}"
+	#x = requests.get(url, data = myobj)
+	getResult = requests.post(urlGet, data = myobj, verify = False)
 
 # create the face detector, using default weights
 detectorMTCNN = MTCNN()
@@ -149,7 +152,10 @@ lock = threading.RLock()
 sharedFrame = OutFrame()
 frame = None
 
-videograbThread = threading.Thread(target=get_video, args=(sharedFrame, lock,"rtsp://admin:Pass@192.168.1.15:554", cv2.CAP_FFMPEG), daemon=True)
+recognitionTime = dt.today() # uses to calculate delta to prevent open door repeat 
+repeatOpenCommandAfter = tdelta(seconds = 15)
+videograbThread = threading.Thread(target=get_video, args=(sharedFrame, lock,"rtsp://admin:Test1234@192.168.1.15:554", cv2.CAP_FFMPEG), daemon=True)
+#videograbThread = threading.Thread(target=get_video, args=(sharedFrame, lock,"rtsp://admin:@192.168.1.77:554/h264/ch1/main/av_stream", cv2.CAP_FFMPEG), daemon=True)
 videograbThread.start()
 while True:
 	if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -185,12 +191,28 @@ while True:
 			class_probability = predicted_probability[0,class_index] * 100
 			predict_names = out_encoder.inverse_transform(predicted_class)
 			print('Predicted: %s (%.6f)' % (predict_names[0], class_probability))
-			if (class_probability > 99.99999):
-				# plot face
-				pyplot.imshow(captured_face_pixels)
-				title = '%s (%.6f)' % (predict_names[0], class_probability)
-				pyplot.title(title)
-				pyplot.show()
+			if (class_probability > 99.999):
+				conn = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER=DESKTestWIN10HO;DATABASE=OpenDoors;UID=Gashevskyi;PWD=Test1234')
+				cursor = conn.cursor()
+				rows = cursor.execute("select UserId from Users where UserName = ?", predict_names[0]).fetchall()
+				userId = 0
+				if ((rows is not None) and len(rows) == 1):
+					userId = rows[0].UserId
+					_,encodedPng = cv2.imencode(".png",frame)
+					cursor.execute("insert into OpenDoorLogs (UserId, ImageData, RecognitionProbability) values (?,?,?)",(2, pyodbc.Binary(encodedPng), class_probability))
+					conn.commit()
+
+				if (class_probability > 99.99999): #send command to controller 
+					curTime = dt.today()
+					if (curTime > (recognitionTime + repeatOpenCommandAfter)):
+						openDoor()
+						recognitionTime = dt.today()
+						# plot face
+						pyplot.imshow(captured_face_pixels)
+						title = '%s (%.6f)' % (predict_names[0], class_probability)
+						pyplot.title(title)
+						pyplot.show()
+				conn.close()
 #video_capture.release()
 cv2.destroyAllWindows()
 modelFaceNetPretrained = None
